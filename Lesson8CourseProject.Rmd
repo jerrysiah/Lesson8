@@ -1,0 +1,98 @@
+---
+title: "Lesson 8 Course Project"
+author: "Jerry Siah"
+date: "21 July 2015"
+output: html_document
+---
+###Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit, it is now possible to collect a large amount of data about personal activity relatively inexpensively. In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. These participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  The goal of this project is to predict the manner in which they did the exercise.
+
+###Analysis
+First, we load the necessary libraries, set the seed for reproducibility of the analysis, and load the data sets, setting blank fields as NAs.
+
+```{r}
+library(caret)
+library(randomForest)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+
+set.seed(12345)
+
+#training and testing data files are assumed to be in the working directory
+training <- read.csv("pml-training.csv", na.strings= c("NA",""," "))
+testing <- read.csv("pml-testing.csv", na.strings= c("NA",""," "))
+```
+
+Next, we perform data cleansing by removing columns with NAs and columns not revelant to the accelerometer readings.
+
+```{r}
+#keep only columns without NAs
+training_clean <- training[,colSums(is.na(training)) == 0]
+
+#remove the first 7 columns of the data which is not related to the accelerometers
+training_clean <- training_clean[8:length(training_clean)]
+```
+
+From the training set, we split the data set into 70% as the training set and the remaining 30% as cross validation set.
+
+```{r}
+#split the cleansed training data into training and cross validation data sets
+inTrain <- createDataPartition(y = training_clean$classe, p = 0.7, list = FALSE)
+training <- training_clean[inTrain, ]
+crossvalidation <- training_clean[-inTrain, ]
+```
+
+We check the correlation between the predictors.  From the plot below, those dark red and blue dots indicate strong correlation between the variables.  Hence, all predictors are highly correlated and are useful for data modeling.
+
+```{r}
+#correlation matrix
+correlationMatrix <- cor(training[, -length(training)])
+corrplot(correlationMatrix, order = "FPC", method = "circle", type = "lower", tl.cex = 0.8,  tl.col = rgb(0, 0, 0))
+#corrplot(correlationMatrix, method = "color")
+```
+
+Since the outcome (classe) is a categorical feature, we use Random Forest algorithm which is able to classify large amounts of data with accuracy.  It is able to overcome the problems of high variance and high bias by averaging.
+
+```{r}
+#fit a model to predict the classe variable using all other variables as predictors
+
+modFit <- randomForest(classe ~ ., data = training)
+modFit
+
+#crossvalidate the model using the remaining 30% of data
+
+prediction <- predict(modFit, crossvalidation)
+confusionMatrix(crossvalidation$classe, prediction)
+```
+
+###Conclusions
+From the results above, the OOB estimate of error rate is a low 0.47%.  From the cross-validation, we achieved a high accuracy of 99.25% and hence, an low out of sample error of 0.75%.  We could use the model to determine the answers for the test data set.
+
+```{r}
+#apply same cleansing method to the testing data
+testing_clean <- testing[,colSums(is.na(testing))==0]
+testing_clean <- testing_clean[8:length(testing_clean)]
+
+#predict the classe variable of the test set
+predictionTest <- predict(modFit, testing_clean)
+predictionTest
+
+#creating files for submission of answers
+answers <- as.character(predictionTest)
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+
+pml_write_files(answers)
+```
+
+###Appendix
+```{r}
+#decision tree
+treeModel <- rpart(classe ~ ., data=training, method="class")
+prp(treeModel)
